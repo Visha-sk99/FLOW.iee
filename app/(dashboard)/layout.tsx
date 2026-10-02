@@ -24,7 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     TITLES[path] ||
     (path.startsWith("/students/") ? "Student Profile" : "") ||
     (path.startsWith("/hub/")      ? `Hub · ${path.split("/hub/")[1]}` : "") ||
-    "MRK'S SCIENCE";
+    "ORBIZEE";
 
   return (
     <ProtectedRoute>
