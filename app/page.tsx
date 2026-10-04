@@ -3,7 +3,7 @@ import LandingPage from "../components/landing/LandingPage";
 import "./landing.css";
 
 export const metadata: Metadata = {
-  title: "ORBIZEE | Every mark tells a story",
+  title: "FLOWIEE | Every mark tells a story",
   description:
     "Students, exams, marks, rankings, and performance insights for real science classrooms.",
 };
