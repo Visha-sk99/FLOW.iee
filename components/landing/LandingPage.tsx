@@ -25,6 +25,8 @@ export default function LandingPage() {
   const dust = useRef<HTMLDivElement>(null);
   const lenisRef = useRef<Lenis | null>(null);
   const ctaLiveRef = useRef(false);
+  const progressRef = useRef(0);
+  const readyAtRef = useRef(127 / 169);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [ctaActive, setCtaActive] = useState(false);
@@ -52,17 +54,14 @@ export default function LandingPage() {
     }
   }, []);
 
+  /* ================= GSAP + LENIS ================= */
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      // static open book -> CTA must still be clickable
       setCtaActive(true);
       return;
     }
 
-    const lenis = new Lenis({
-      duration: 1.15,
-      smoothWheel: true,
-    });
+    const lenis = new Lenis({ duration: 1.15, smoothWheel: true });
     lenisRef.current = lenis;
 
     const updateScroll = () => ScrollTrigger.update();
@@ -72,7 +71,6 @@ export default function LandingPage() {
     gsap.ticker.add(tick);
     gsap.ticker.lagSmoothing(0);
 
-    // progress window in which the last spread is on screen (recomputed below)
     const ctaRange = { start: 0.77, end: 0.9 };
 
     const context = gsap.context(() => {
@@ -101,7 +99,6 @@ export default function LandingPage() {
         scrollTrigger: {
           trigger: scene.current,
           start: "top top",
-          // longer scroll so the final spread can be held open
           end: () =>
             `+=${window.innerHeight * (window.innerWidth < 640 ? 6 : 9)}`,
           scrub: 1,
@@ -109,6 +106,7 @@ export default function LandingPage() {
           anticipatePin: 1,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
+            progressRef.current = self.progress;
             const live =
               self.progress >= ctaRange.start && self.progress <= ctaRange.end;
             if (live !== ctaLiveRef.current) {
@@ -120,25 +118,13 @@ export default function LandingPage() {
       });
 
       timeline
-        // book approaches
         .to(bookRefs.stage.current, { scale: 1.3, yPercent: -2, duration: 20 }, 0)
         .to(glow.current, { xPercent: 12, yPercent: -9, duration: 60 }, 0)
         .to(dust.current, { yPercent: -20, duration: 169 }, 0)
         .to(heroCopy.current, { autoAlpha: 0, y: -35, duration: 18 }, 8)
-        // rotate and rise
-        .to(
-          bookRefs.stage.current,
-          { rotation: -5, yPercent: -10, duration: 15 },
-          20
-        )
-        // open the cover
+        .to(bookRefs.stage.current, { rotation: -5, yPercent: -10, duration: 15 }, 20)
         .to(bookRefs.cover.current, { rotationY: -170, duration: 35 }, 35)
-        .to(
-          bookRefs.leftPage.current,
-          { scaleX: 1, opacity: 1, duration: 30 },
-          40
-        )
-        // camera orbit
+        .to(bookRefs.leftPage.current, { scaleX: 1, opacity: 1, duration: 30 }, 40)
         .to(
           bookRefs.book.current,
           { rotationY: 14, rotationX: 6, duration: 15, ease: "power1.inOut" },
@@ -151,19 +137,13 @@ export default function LandingPage() {
         )
         .to(featureReveal.current, { autoAlpha: 1, y: 0, duration: 12 }, 72);
 
-      // turn the pages one by one (last leaf finishes at 128)
       leaves.forEach((leaf, index) => {
         const start = 82 + index * 12;
         timeline
-          .to(
-            leaf,
-            { rotationY: -180, duration: 10, ease: "power2.inOut" },
-            start
-          )
+          .to(leaf, { rotationY: -180, duration: 10, ease: "power2.inOut" }, start)
           .set(leaf, { zIndex: 11 + index }, start + 5);
       });
 
-      // settle squarely on the last spread so the CTA is readable + clickable
       timeline
         .to(
           bookRefs.book.current,
@@ -172,17 +152,9 @@ export default function LandingPage() {
         )
         .to(
           bookRefs.stage.current,
-          {
-            rotation: 0,
-            scale: 1.4,
-            yPercent: -8,
-            duration: 12,
-            ease: "power2.out",
-          },
+          { rotation: 0, scale: 1.4, yPercent: -8, duration: 12, ease: "power2.out" },
           128
         )
-        // HOLD 140 -> 150 : nothing animates, the CTA just sits there
-        // leave the book and enter the page
         .to(featureReveal.current, { autoAlpha: 0, duration: 6 }, 150)
         .to(
           bookRefs.stage.current,
@@ -190,12 +162,11 @@ export default function LandingPage() {
           154
         );
 
-      // derive the real clickable window from the built timeline
       const total = timeline.duration() || 169;
       ctaRange.start = 129 / total;
       ctaRange.end = 153 / total;
+      readyAtRef.current = 127 / total;
 
-      // scroll reveals for the sections after the book
       document
         .querySelectorAll<HTMLElement>(
           ".landing-editorial > *, .landing-section-heading > *, .landing-feature-lines > div, .landing-journey > *, .landing-auth-intro > *"
@@ -227,6 +198,60 @@ export default function LandingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ================= EDIT 3: CTA CLICK DETECTION ================= */
+  // 3D transforms break normal clicking inside the book, so check the
+  // pointer position against the CTA buttons' on-screen rectangles instead.
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const hitTest = (x: number, y: number): AuthMode | null => {
+      if (!reduced && progressRef.current < readyAtRef.current) return null;
+
+      const stage = bookRefs.stage.current;
+      if (!stage) return null;
+      if (parseFloat(getComputedStyle(stage).opacity) < 0.3) return null;
+
+      const buttons = Array.from(
+        stage.querySelectorAll<HTMLButtonElement>(
+          ".landing-right-page .landing-pg-cta"
+        )
+      );
+
+      for (const button of buttons) {
+        const r = button.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          return button.classList.contains("ghost") ? "signup" : "login";
+        }
+      }
+      return null;
+    };
+
+    const onClick = (event: MouseEvent) => {
+      const mode = hitTest(event.clientX, event.clientY);
+      if (!mode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openAuth(mode);
+    };
+
+    const onMove = (event: MouseEvent) => {
+      document.body.style.cursor = hitTest(event.clientX, event.clientY)
+        ? "pointer"
+        : "";
+    };
+
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("mousemove", onMove, { passive: true });
+
+    return () => {
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("mousemove", onMove);
+      document.body.style.cursor = "";
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openAuth]);
+
+  /* ================= JSX ================= */
   return (
     <main className="landing-root" id="home">
       <nav className="landing-nav" aria-label="Main navigation">
@@ -258,10 +283,7 @@ export default function LandingPage() {
           <span />
         </button>
         {menuOpen && (
-          <div
-            className="landing-mobile-menu"
-            onClick={() => setMenuOpen(false)}
-          >
+          <div className="landing-mobile-menu" onClick={() => setMenuOpen(false)}>
             <a href="#home">Home</a>
             <a href="#features">Features</a>
             <a href="#about">About</a>
