@@ -3,7 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
-  title: "ORBIZEE",
+  title: "FLOWIEE",
   description: "Coaching Institute Management System",
 };
 
